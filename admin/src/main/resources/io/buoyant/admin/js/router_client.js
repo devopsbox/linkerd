@@ -83,17 +83,47 @@ var RouterClient = (function() {
     return summary;
   }
 
-  return function (metricsCollector, routers, client, $metricsEl, routerName, clientTemplate, metricPartial, $chartEl, colors) {
+  return function (metricsCollector, routers, client, $metricsEl, routerName, clientTemplate, metricPartial, $chartEl, colors, $toggleLinks, shouldExpandInitially) {
     template = clientTemplate;
     Handlebars.registerPartial('metricPartial', metricPartial);
     var clientColor = colors.color;
     var latencyLegend = createLatencyLegend(colors.colorFamily);
     var metricDefinitions = getMetricDefinitions(routerName, client.label);
 
-    renderMetrics($metricsEl, client, [], [], clientColor);
-    var chart = SuccessRateGraph($chartEl, colors.color);
+    var $expandLink = $toggleLinks.find(".client-expand");
+    var $collapseLink = $toggleLinks.find(".client-collapse");
 
-    var metricsHandler = function(data) {
+    renderMetrics($metricsEl, client, [], [], clientColor);
+    var chart = SuccessRateGraph($chartEl.find($(".client-success-rate")), colors.color);
+
+    // collapse client section by default (deal with large # of clients)
+    if(shouldExpandInitially) {
+      showClient();
+    } else {
+      toggleClientDisplay(false);
+    }
+
+    $expandLink.click(showClient);
+    $collapseLink.click(hideClient);
+
+    function showClient() {
+      metricsCollector.registerListener(metricsHandler, getDesiredMetrics);
+      toggleClientDisplay(true);
+    }
+
+    function hideClient() {
+      metricsCollector.deregisterListener(metricsHandler);
+      toggleClientDisplay(false);
+    }
+
+    function toggleClientDisplay(expand) {
+      $metricsEl.toggle(expand);
+      $chartEl.toggle(expand);
+      $collapseLink.toggle(expand);
+      $expandLink.toggle(!expand);
+    }
+
+    function metricsHandler(data) {
       var filteredData = _.filter(data.specific, function (d) { return d.name.indexOf(routerName) !== -1 });
       var summaryData = getSummaryData(filteredData, metricDefinitions);
       var latencies = getLatencyData(client, latencyKeys, latencyLegend); // this legend is no longer used in any charts: consider removing
@@ -102,13 +132,11 @@ var RouterClient = (function() {
       renderMetrics($metricsEl, client, summaryData, latencies, clientColor);
     }
 
-    var getDesiredMetrics = function(metrics) {
+    function getDesiredMetrics(metrics) {
       return  _.flatMap(metricDefinitions, function(d) {
         return Query.filter(d.query, metrics);
       });
     }
-
-    metricsCollector.registerListener(metricsHandler, getDesiredMetrics);
 
     return {
       updateColors: function(clientToColor) {
